@@ -1,0 +1,43 @@
+wave:
+  id: "04"
+  phase: "implementation"
+  type: "frontend"
+  agent: "frontend-specialist"
+  status: "pending"
+  description: "Setup do projeto Vite + React + TypeScript + Tailwind + Dependências"
+  depends_on: ["03"]
+
+  sdd_reference:
+    document: "artifacts/SDD.md"
+    sections:
+      - "Stack Tecnológica"
+      - "Estrutura de Pastas"
+      - "Design System — Tema Cursor IDE"
+
+  tasks:
+    - id: "IMPL-001"
+      title: "Inicializar projeto Vite com React + TypeScript"
+      status: "pending"
+      acceptance_criteria:
+        - "vite create com template react-ts"
+        - "package.json com todas as dependências"
+      agent_notes: ""
+    - id: "IMPL-002"
+      title: "Configurar Tailwind CSS 4 com tema cursor-ide"
+      status: "pending"
+      acceptance_criteria:
+        - "tailwind.config com cores do tema preto e branco"
+        - "index.css com @tailwind directives"
+        - "Fonte Inter e JetBrains Mono configuradas"
+      agent_notes: ""
+    - id: "IMPL-003"
+      title: "Criar estrutura de pastas e arquivos base"
+      status: "pending"
+      acceptance_criteria:
+        - "src/api/, src/components/ui/, src/components/layout/, src/contexts/, src/hooks/, src/pages/, src/lib/"
+        - "main.tsx com providers"
+        - "App.tsx com rotas"
+      agent_notes: ""
+
+  started_at: null
+  completed_at: null

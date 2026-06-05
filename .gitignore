@@ -1,0 +1,64 @@
+# Secrets & Environment Configurations
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
+*.token
+
+# Node.js / Frontend
+node_modules/
+/web/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.eslintcache
+.parcel-cache
+.next/
+.nuxt/
+.svelte-kit/
+.vuepress/
+dist/
+/web/dist/
+out/
+/web/out/
+build/
+.cache/
+
+# Go / Compiled Binaries & Builds
+bin/
+/app/bin/
+*.exe
+*.exe_*
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/app/coverage.out
+__pycache__/
+*.pyc
+
+# IDEs & System Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.project
+.classpath
+.settings/
+
+# Agent / Workspace temporary files
+/app/tmp/
+/app/logs/
+.agents/
+.claude/
+.gemini/

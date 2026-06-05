@@ -1,0 +1,50 @@
+wave:
+  id: "06"
+  phase: "implementation"
+  type: "frontend"
+  agent: "frontend-specialist"
+  status: "pending"
+  description: "Cliente HTTP, serviços de API e Contexto de Autenticação"
+  depends_on: ["04"]
+
+  sdd_reference:
+    document: "artifacts/SDD.md"
+    sections:
+      - "API Client — Design"
+      - "Fluxo de Autenticação"
+      - "Estratégia de Estado"
+
+  tasks:
+    - id: "IMPL-006"
+      title: "Implementar api/client.ts com Axios + interceptors"
+      status: "pending"
+      acceptance_criteria:
+        - "Request interceptor injeta JWT do localStorage"
+        - "Response interceptor faz refresh automático em 401"
+        - "Erros normalizados para ApiError type"
+        - "Base URL configurável via env"
+      agent_notes: ""
+    - id: "IMPL-007"
+      title: "Implementar serviços de API (auth, demos, matches, chat)"
+      status: "pending"
+      acceptance_criteria:
+        - "auth.ts: magicLink(), callback(), refresh(), logout()"
+        - "demos.ts: requestUpload(), confirmUpload()"
+        - "matches.ts: listMatches(), getMatch()"
+        - "chat.ts: listChats(), createChat(), getChat(), continueChat(), deleteChat()"
+        - "Todas as funções tipadas com request/response types"
+      agent_notes: ""
+    - id: "IMPL-008"
+      title: "Implementar AuthContext + useAuth hook"
+      status: "pending"
+      acceptance_criteria:
+        - "AuthProvider com estado: user, token, isAuthenticated, isLoading"
+        - "login() → POST /auth/magic-link"
+        - "handleCallback() → POST /auth/callback + armazena JWT"
+        - "logout() → DELETE /auth/session + limpa storage"
+        - "refreshToken() → POST /auth/refresh"
+        - "Restaura sessão do localStorage no mount"
+      agent_notes: ""
+
+  started_at: null
+  completed_at: null

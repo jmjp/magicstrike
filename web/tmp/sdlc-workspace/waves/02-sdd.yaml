@@ -1,0 +1,38 @@
+wave:
+  id: "02"
+  phase: "sdd"
+  agent: "orchestrator"
+  status: "completed"
+  description: "Software Design Document para frontend MagicStrike"
+  depends_on: ["01"]
+
+  tasks:
+    - id: "SDD-001"
+      title: "Definir stack tecnológica e estrutura de pastas"
+      status: "completed"
+    - id: "SDD-002"
+      title: "Especificar design system (tema cursor-ide preto e branco)"
+      status: "completed"
+    - id: "SDD-003"
+      title: "Desenhar árvore de componentes e rotas"
+      status: "completed"
+    - id: "SDD-004"
+      title: "Especificar API client e interceptors"
+      status: "completed"
+    - id: "SDD-005"
+      title: "Especificar fluxo de autenticação"
+      status: "completed"
+    - id: "SDD-006"
+      title: "Detalhar páginas e estados"
+      status: "completed"
+    - id: "SDD-007"
+      title: "Definir estratégia de estado e persistência"
+      status: "completed"
+    - id: "SDD-008"
+      title: "Escrever plano de testes e deploy"
+      status: "completed"
+
+  started_at: "2026-06-04T22:40:00-03:00"
+  completed_at: "2026-06-04T22:45:00-03:00"
+  artifacts:
+    - "artifacts/SDD.md"

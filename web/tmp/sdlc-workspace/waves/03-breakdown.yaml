@@ -1,0 +1,33 @@
+wave:
+  id: "03"
+  phase: "breakdown"
+  agent: "project-planner"
+  status: "completed"
+  description: "Decomposição do SDD em waves de implementação frontend"
+  depends_on: ["02"]
+
+  tasks:
+    - id: "BRK-001"
+      title: "Wave 04 — Setup do projeto (Vite + Tailwind + Config)"
+      status: "completed"
+    - id: "BRK-002"
+      title: "Wave 05 — UI Components + Design System"
+      status: "completed"
+    - id: "BRK-003"
+      title: "Wave 06 — API Client + Auth"
+      status: "completed"
+    - id: "BRK-004"
+      title: "Wave 07 — Pages (todas as páginas)"
+      status: "completed"
+    - id: "BRK-005"
+      title: "Wave 08 — QA, testes e validação"
+      status: "completed"
+
+  started_at: "2026-06-04T22:45:00-03:00"
+  completed_at: "2026-06-04T22:46:00-03:00"
+  output:
+    - "waves/04-wave-project-setup.yaml"
+    - "waves/05-wave-ui-components.yaml"
+    - "waves/06-wave-api-client.yaml"
+    - "waves/07-wave-pages.yaml"
+    - "waves/08-wave-qa.yaml"

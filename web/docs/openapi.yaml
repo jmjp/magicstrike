@@ -1,0 +1,996 @@
+openapi: 3.0.3
+info:
+  title: MagicStrike API
+  description: |
+    API para análise tática inteligente de replays de CS2 (Counter-Strike 2).
+    
+    ### Fluxo de Autenticação (Passwordless)
+    1. O usuário solicita um Magic Link através de `/api/v1/auth/magic-link`.
+    2. Um e-mail contendo um token seguro de utilização única é enviado (em ambiente de desenvolvimento/teste, o token é registrado nos logs/banco).
+    3. O usuário realiza a requisição POST `/api/v1/auth/callback` com o token recebido.
+    4. O servidor responde com um JWT (`access_token`) válido por 7 dias e um `session_id`.
+    5. O frontend deve incluir o cabeçalho `Authorization: Bearer <access_token>` em todas as rotas protegidas.
+    6. Se o usuário deslogar via `DELETE /api/v1/auth/session`, o token de sessão é revogado imediatamente e inserido em uma blocklist em memória com TTL correspondente à expiração do JWT.
+    
+    ### Upload de Demos (Replays)
+    1. O frontend envia metadados da partida e o nome do arquivo para `/api/v1/demos/upload-request`.
+    2. O backend responde com uma URL pré-assinada temporária para o MinIO/S3 (`upload_url`) e a chave do bucket correspondente (`bucket_key`).
+    3. O frontend faz uma chamada HTTP PUT direta para a `upload_url` enviando o arquivo `.dem` binário (`Content-Type: application/octet-stream`).
+    4. Após concluir o upload do binário, o frontend chama `/api/v1/demos/upload-confirm` com o `match_id` e a `bucket_key` para validar o arquivo e enfileirar o parser automático da demo.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Servidor de Desenvolvimento Local
+
+paths:
+  /auth/magic-link:
+    post:
+      summary: Solicitar Magic Link para login
+      description: Solicita o envio de um link mágico de autenticação para o e-mail informado. Para evitar enumeração de contas, o endpoint retorna sempre status 202 (Accepted).
+      operationId: requestMagicLink
+      tags:
+        - Autenticação
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+                  example: user@example.com
+      responses:
+        '202':
+          description: Solicitação aceita. Se o e-mail existir, o link mágico será enviado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: If the email exists, a magic link has been sent.
+        '400':
+          description: Corpo da requisição inválido ou e-mail ausente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+  /auth/callback:
+    post:
+      summary: Confirmar autenticação via Magic Link
+      description: Valida o token recebido no Magic Link e inicia a sessão do usuário, retornando um JWT de acesso e metadados.
+      operationId: authCallback
+      tags:
+        - Autenticação
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  example: 9aa0c2a993879ed15c91b65569066c1ca59d2ec27cac30a598f0a2bb0eadb527
+      responses:
+        '200':
+          description: Autenticação bem-sucedida.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessResponse'
+        '400':
+          description: Token ausente ou JSON inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+        '401':
+          description: Token inválido ou expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+  /auth/refresh:
+    post:
+      summary: Renovar JWT e Sessão de Autenticação
+      description: Gera um novo JWT com expiração renovada a partir de uma sessão ativa válida. Requer o cabeçalho Authorization.
+      operationId: refreshSession
+      tags:
+        - Autenticação
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Sessão renovada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessResponse'
+        '401':
+          description: Não autorizado ou sessão expirada/inválida.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+  /auth/session:
+    delete:
+      summary: Logout / Encerrar Sessão
+      description: Invalida e destrói a sessão atual. O session_id associado é adicionado à blocklist de tokens para impedir reutilização do JWT atual.
+      operationId: logout
+      tags:
+        - Autenticação
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Logout efetuado com sucesso (sem conteúdo).
+        '401':
+          description: JWT inválido ou ausente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+  /demos/upload-request:
+    post:
+      summary: Solicitar URL pré-assinada para Upload de Demo
+      description: Registra uma intenção de envio de demo de partida e retorna uma URL segura pré-assinada para upload direto no bucket S3.
+      operationId: requestUpload
+      tags:
+        - Demos & Upload
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - filename
+                - team_a
+                - team_b
+                - map_name
+              properties:
+                match_id:
+                  type: string
+                  description: Opcional. ID de identificação customizado se já gerado.
+                  example: 01KTAP1DS10RT0VRSBD62Q0MQB
+                filename:
+                  type: string
+                  description: Nome original do arquivo da demo com extensão .dem.
+                  example: mibr-vs-lynn-vision-m1-anubis-p2.dem
+                md5_hash:
+                  type: string
+                  description: Hash MD5 opcional do arquivo para verificar duplicatas.
+                  example: d41d8cd98f00b204e9800998ecf8427e
+                team_a:
+                  type: string
+                  description: Nome do time A.
+                  example: MIBR
+                team_b:
+                  type: string
+                  description: Nome do time B.
+                  example: Lynn Vision
+                map_name:
+                  type: string
+                  description: Nome do mapa jogado.
+                  example: de_anubis
+      responses:
+        '200':
+          description: URL pré-assinada gerada com sucesso.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - upload_url
+                  - bucket_key
+                  - expires_at
+                  - match_id
+                properties:
+                  upload_url:
+                    type: string
+                    format: uri
+                    description: URL temporária para enviar o arquivo binário via requisição PUT.
+                    example: http://127.0.0.1:9002/magicstrike-demos/uploads/01KTAM9NZ3QF5V2N9H62R05JM7/01KTAP1DS10RT0VRSBD62Q0MQB/mibr-vs-lynn-vision-m1-anubis-p2.dem?X-Amz-Algorithm=AWS4-HMAC-SHA256&...
+                  bucket_key:
+                    type: string
+                    description: Caminho identificador único do arquivo no bucket S3. Deve ser passado no payload de confirmação de upload.
+                    example: /uploads/01KTAM9NZ3QF5V2N9H62R05JM7/01KTAP1DS10RT0VRSBD62Q0MQB/mibr-vs-lynn-vision-m1-anubis-p2.dem
+                  expires_at:
+                    type: string
+                    format: date-time
+                    description: Data de expiração da URL pré-assinada.
+                    example: "2026-06-05T01:38:24Z"
+                  match_id:
+                    type: string
+                    description: ID interno associado a esta partida.
+                    example: 01KTAP1DS10RT0VRSBD62Q0MQB
+        '400':
+          description: Requisição inválida ou dados de mapa ausentes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseRFC7807'
+        '401':
+          description: Não autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseRFC7807'
+        '409':
+          description: Conflito. Demo duplicada (mesmo MD5 detectado).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseRFC7807'
+
+  /demos/upload-confirm:
+    post:
+      summary: Confirmar Upload e Enfileirar Processamento
+      description: Confirma a presença física do arquivo de demo no bucket S3 e cria uma tarefa assíncrona (job) de parsing no RabbitMQ.
+      operationId: confirmUpload
+      tags:
+        - Demos & Upload
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - match_id
+                - bucket_key
+              properties:
+                match_id:
+                  type: string
+                  example: 01KTAP1DS10RT0VRSBD62Q0MQB
+                bucket_key:
+                  type: string
+                  example: /uploads/01KTAM9NZ3QF5V2N9H62R05JM7/01KTAP1DS10RT0VRSBD62Q0MQB/mibr-vs-lynn-vision-m1-anubis-p2.dem
+      responses:
+        '201':
+          description: Upload confirmado. Partida adicionada na fila de processamento.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - match_id
+                properties:
+                  status:
+                    type: string
+                    example: queued
+                  match_id:
+                    type: string
+                    example: 01KTAP1DS10RT0VRSBD62Q0MQB
+        '400':
+          description: Dados em formato incorreto.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseRFC7807'
+        '401':
+          description: Autenticação necessário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseRFC7807'
+        '404':
+          description: Partida correspondente ou arquivo no S3 não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseRFC7807'
+
+  /matches:
+    get:
+      summary: Listar partidas do usuário
+      description: Retorna uma lista paginada das partidas enviadas pelo usuário logado.
+      operationId: listMatches
+      tags:
+        - Partidas (Matches)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+          description: Quantidade máxima de registros retornados.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Ponto de partida para a paginação.
+      responses:
+        '200':
+          description: Lista de partidas retornada com sucesso.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required:
+                      - matches
+                      - limit
+                      - offset
+                      - count
+                    properties:
+                      matches:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Match'
+                      limit:
+                        type: integer
+                        example: 20
+                      offset:
+                        type: integer
+                        example: 0
+                      count:
+                        type: integer
+                        example: 1
+        '400':
+          description: Parâmetros limit/offset inválidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+        '401':
+          description: Não autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+  /matches/{id}:
+    get:
+      summary: Obter detalhes de uma partida
+      description: Retorna os dados táticos processados e metadados de uma partida específica de propriedade do usuário.
+      operationId: getMatch
+      tags:
+        - Partidas (Matches)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID único da partida.
+      responses:
+        '200':
+          description: Partida encontrada.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Match'
+        '401':
+          description: Autenticação pendente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+        '404':
+          description: Partida não encontrada ou não pertencente ao usuário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+  /chat:
+    get:
+      summary: Listar sessões de chat ativas
+      description: Retorna uma lista resumida das sessões de chat abertas pelo usuário, ordenadas/paginadas de forma apropriada.
+      operationId: listChatSessions
+      tags:
+        - Chat & IA
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Lista de sessões recuperada.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required:
+                      - sessions
+                      - total
+                      - limit
+                      - offset
+                    properties:
+                      sessions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ChatSessionSummary'
+                      total:
+                        type: integer
+                        example: 12
+                      limit:
+                        type: integer
+                        example: 20
+                      offset:
+                        type: integer
+                        example: 0
+        '401':
+          description: Não autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+    post:
+      summary: Iniciar uma nova sessão de chat (Primeira pergunta)
+      description: Cria uma nova sessão de chat vinculando uma ou mais demos/matches e enviando a pergunta inicial analisada pela IA.
+      operationId: createChatSession
+      tags:
+        - Chat & IA
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - match_ids
+                - question
+              properties:
+                match_ids:
+                  type: array
+                  description: Coleção de IDs de partidas processadas para servir como contexto de análise. Mínimo 1, Máximo 20.
+                  minItems: 1
+                  maxItems: 20
+                  items:
+                    type: string
+                  example: ["01KTAP1DS10RT0VRSBD62Q0MQB"]
+                question:
+                  type: string
+                  description: Pergunta tática formulada pelo usuário. Limite de 500 caracteres.
+                  maxLength: 500
+                  example: "Porque o insani tem tão pouco HS?"
+      responses:
+        '201':
+          description: Sessão criada e resposta gerada.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/ChatInteractResponse'
+        '400':
+          description: Validação falhou (limite de matches, tamanho da questão ou corpo inválido).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+        '401':
+          description: Requer login.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+  /chat/{id}:
+    get:
+      summary: Detalhes e Histórico de uma sessão de chat
+      description: Retorna o histórico contendo as últimas 10 mensagens de uma sessão de chat, ordenadas com a resposta mais recente primeiro.
+      operationId: getChatSession
+      tags:
+        - Chat & IA
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID da sessão de chat.
+      responses:
+        '200':
+          description: Detalhes da sessão carregados.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/ChatSessionDetail'
+        '401':
+          description: Não autorizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+        '404':
+          description: Sessão não encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+    post:
+      summary: Enviar mensagem subsequente no chat
+      description: Adiciona uma pergunta a uma sessão de chat existente e retorna a resposta gerada mantendo o histórico de contexto.
+      operationId: continueChatSession
+      tags:
+        - Chat & IA
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID da sessão de chat.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - question
+              properties:
+                question:
+                  type: string
+                  maxLength: 500
+                  example: "Quem se destacou mais no lado TR?"
+      responses:
+        '200':
+          description: Pergunta adicionada e resposta da IA gerada.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/ChatInteractResponse'
+        '400':
+          description: Pergunta vazia ou maior que 500 caracteres.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+        '401':
+          description: Não autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+        '404':
+          description: Sessão não encontrada ou expirada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+    delete:
+      summary: Excluir uma sessão de chat
+      description: Apaga permanentemente uma sessão de chat do banco de dados.
+      operationId: deleteChatSession
+      tags:
+        - Chat & IA
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID da sessão de chat.
+      responses:
+        '204':
+          description: Sessão excluída com sucesso (sem conteúdo).
+        '401':
+          description: Acesso negado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+        '404':
+          description: Sessão não encontrada ou não pertencente ao usuário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseBasic'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      required:
+        - id
+        - username
+        - email
+        - points
+        - blocked
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: ID do usuário (gerado como ULID).
+          example: 01KTAM9NZ3QF5V2N9H62R05JM7
+        username:
+          type: string
+          example: "insanifan"
+        email:
+          type: string
+          format: email
+          example: "test@example.com"
+        avatar:
+          type: string
+          format: uri
+          example: "https://example.com/avatar.jpg"
+        points:
+          type: integer
+          example: 0
+        blocked:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-04T22:31:30-03:00"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-04T22:31:30-03:00"
+
+    AuthSuccessResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - access_token
+            - session_id
+            - user
+            - expires_at
+          properties:
+            access_token:
+              type: string
+              description: Token JWT para autenticação.
+              example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+            session_id:
+              type: string
+              description: ID da sessão criada.
+              example: 01KTAP0QYEDTTHKHDCA1BMD26W
+            user:
+              $ref: '#/components/schemas/User'
+            expires_at:
+              type: string
+              format: date-time
+              example: "2026-06-12T01:23:24Z"
+
+    Match:
+      type: object
+      required:
+        - id
+        - user_id
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: ID da partida (ULID).
+          example: 01KTAP1DS10RT0VRSBD62Q0MQB
+        user_id:
+          type: string
+          description: ID do proprietário da partida.
+          example: 01KTAM9NZ3QF5V2N9H62R05JM7
+        status:
+          type: string
+          enum: [pending, processing, processed, failed]
+          description: Estado atual do parsing e processamento da demo.
+          example: processed
+        team_a:
+          type: string
+          example: MIBR
+        team_b:
+          type: string
+          example: Lynn Vision
+        demo_md5:
+          type: string
+          example: 5d41402abc4b2a76b9719d911017c592
+        score_a:
+          type: integer
+          example: 13
+        score_b:
+          type: integer
+          example: 6
+        total_rounds:
+          type: integer
+          example: 19
+        map_name:
+          type: string
+          example: de_anubis
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-05T01:23:24Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-05T01:25:00Z"
+
+    DataPoint:
+      type: object
+      required:
+        - label
+        - value
+      properties:
+        label:
+          type: string
+          example: "insani ADR"
+        value:
+          type: string
+          example: "92.4"
+
+    Message:
+      type: object
+      required:
+        - question
+        - answer
+        - source
+        - created_at
+      properties:
+        question:
+          type: string
+          example: "Porque o insani tem tão pouco HS?"
+        answer:
+          type: string
+          example: "Analisando os rounds de TR, insani prefere sprays controlados mirando no centro de massa (tórax) para assegurar o dano em combates à queima-roupa..."
+        source:
+          type: string
+          enum: [clickhouse, qdrant]
+          description: Mecanismo de busca usado para justificar e enriquecer o contexto da resposta.
+          example: clickhouse
+        data_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataPoint'
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-05T01:30:00Z"
+
+    ChatInteractResponse:
+      type: object
+      required:
+        - session_id
+        - answer
+        - source
+      properties:
+        session_id:
+          type: string
+          example: 01KTAP883DM1CCCB0V7E06V7CK
+        answer:
+          type: string
+          example: "De acordo com os dados táticos..."
+        source:
+          type: string
+          enum: [clickhouse, qdrant]
+          example: clickhouse
+        matches_used:
+          type: array
+          items:
+            type: string
+          example: ["01KTAP1DS10RT0VRSBD62Q0MQB"]
+        data_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataPoint'
+
+    ChatSessionSummary:
+      type: object
+      required:
+        - id
+        - match_ids
+        - message_count
+        - last_question
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          example: 01KTAP883DM1CCCB0V7E06V7CK
+        match_ids:
+          type: array
+          items:
+            type: string
+          example: ["01KTAP1DS10RT0VRSBD62Q0MQB"]
+        message_count:
+          type: integer
+          example: 2
+        last_question:
+          type: string
+          example: "Quem se destacou mais no lado TR?"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-05T01:28:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-05T01:31:00Z"
+
+    ChatSessionDetail:
+      type: object
+      required:
+        - id
+        - match_ids
+        - messages
+        - created_at
+        - updated_at
+        - expires_at
+      properties:
+        id:
+          type: string
+          example: 01KTAP883DM1CCCB0V7E06V7CK
+        match_ids:
+          type: array
+          items:
+            type: string
+          example: ["01KTAP1DS10RT0VRSBD62Q0MQB"]
+        messages:
+          type: array
+          description: Últimas 10 mensagens ordenadas da mais RECENTE para a mais ANTIGA.
+          items:
+            $ref: '#/components/schemas/Message'
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-05T01:28:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-05T01:31:00Z"
+        expires_at:
+          type: string
+          format: date-time
+          example: "2026-07-05T01:28:00Z"
+
+    ErrorResponseBasic:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Email is required"
+
+    ErrorResponseRFC7807:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          example: "about:blank"
+        title:
+          type: string
+          example: "Upload request failed"
+        status:
+          type: integer
+          example: 400
+        detail:
+          type: string
+          example: "invalid upload request: empty filename"
+        instance:
+          type: string
+          example: "/api/v1/demos/upload-request"

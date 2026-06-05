@@ -1,0 +1,56 @@
+wave:
+  id: "07"
+  phase: "implementation"
+  type: "frontend"
+  agent: "frontend-specialist"
+  status: "pending"
+  description: "Todas as páginas: Login, Callback, Dashboard, MatchDetail, Upload, ChatList, ChatRoom"
+  depends_on: ["05", "06"]
+
+  sdd_reference:
+    document: "artifacts/SDD.md"
+    sections:
+      - "Rotas e Árvore de Componentes"
+      - "Páginas — Especificação Detalhada"
+
+  tasks:
+    - id: "IMPL-009"
+      title: "Implementar Login + Callback + ProtectedRoute"
+      status: "pending"
+      acceptance_criteria:
+        - "Login: formulário de email, validação, estados idle/loading/success/error"
+        - "Callback: extrai token da URL, chama API, redireciona ou mostra erro"
+        - "ProtectedRoute: redireciona para /login se não autenticado"
+      agent_notes: ""
+    - id: "IMPL-010"
+      title: "Implementar Dashboard (lista de partidas)"
+      status: "pending"
+      acceptance_criteria:
+        - "Grid de cards com info de partida (times, placar, mapa, status, data)"
+        - "Estados: loading (skeleton), empty (EmptyState), data, error (retry)"
+        - "Paginação com offset/limit"
+        - "Link para /matches/:id em cada card"
+      agent_notes: ""
+    - id: "IMPL-011"
+      title: "Implementar MatchDetail + Upload"
+      status: "pending"
+      acceptance_criteria:
+        - "MatchDetail: info completa da partida, status com StatusDot"
+        - "Upload: wizard 3 passos (metadata → upload progress → confirmação)"
+        - "Barra de progresso real no upload para S3"
+        - "Validação dos campos obrigatórios (filename, team_a, team_b, map_name)"
+      agent_notes: ""
+    - id: "IMPL-012"
+      title: "Implementar ChatList + ChatRoom"
+      status: "pending"
+      acceptance_criteria:
+        - "ChatList: lista de sessões, botão New Chat com modal"
+        - "ChatRoom: bolhas de mensagem (pergunta/resposta), input com contador 500 chars"
+        - "Data points exibidos como badges abaixo das respostas"
+        - "Indicador de source (ClickHouse/Qdrant)"
+        - "Auto-scroll para última mensagem"
+        - "Modal New Chat: seleção de matches + primeira pergunta"
+      agent_notes: ""
+
+  started_at: null
+  completed_at: null

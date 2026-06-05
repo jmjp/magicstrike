@@ -1,0 +1,42 @@
+wave:
+  id: "05"
+  phase: "implementation"
+  type: "frontend"
+  agent: "frontend-specialist"
+  status: "pending"
+  description: "Componentes UI do Design System e Layout Shell"
+  depends_on: ["04"]
+
+  sdd_reference:
+    document: "artifacts/SDD.md"
+    sections:
+      - "Design System — Tema Cursor IDE"
+      - "Componentes Base"
+      - "AppShell Layout"
+
+  tasks:
+    - id: "IMPL-004"
+      title: "Implementar componentes UI base"
+      status: "pending"
+      acceptance_criteria:
+        - "Button com variants (primary, secondary, ghost, danger) e loading state"
+        - "Input com label, error, icon"
+        - "Card com padding e hover"
+        - "Badge com variants de status"
+        - "Spinner animado"
+        - "Modal com backdrop"
+        - "EmptyState com ícone e ação"
+        - "StatusDot com animação pulse"
+      agent_notes: ""
+    - id: "IMPL-005"
+      title: "Implementar AppShell (Navbar + Layout)"
+      status: "pending"
+      acceptance_criteria:
+        - "Navbar fixa no topo com logo MagicStrike"
+        - "Links de navegação: Matches, Upload, Chat"
+        - "Avatar/username do usuário logado + logout"
+        - "Layout com slot para conteúdo scrollável"
+      agent_notes: ""
+
+  started_at: null
+  completed_at: null

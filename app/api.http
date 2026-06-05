@@ -1,0 +1,96 @@
+@baseUrl = http://localhost:8080/api/v1
+@magicToken = 9aa0c2a993879ed15c91b65569066c1ca59d2ec27cac30a598f0a2bb0eadb527
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtYWdpY3N0cmlrZSIsInN1YiI6IjAxS1RBTTlOWjNRRjVWMk45SDYyUjA1Sk03IiwiZXhwIjoxNzgxMjI3MzgxLCJpYXQiOjE3ODA2MjI1ODEsImp0aSI6IjAxS1RBUDBRWUVEVFRIS0hEQ0ExQk1EMjZXIiwidXNlcl9pZCI6IjAxS1RBTTlOWjNRRjVWMk45SDYyUjA1Sk03In0.kZ5ZlA1YBAa5sFJUKjFHuMOy9l54X252PieAmT5ZJ9U
+@sessionID = 01KTAP0QYEDTTHKHDCA1BMD26W
+
+@urlAssinadaRetornada = http://127.0.0.1:9002/magicstrike-demos/uploads/01KTAM9NZ3QF5V2N9H62R05JM7/01KTAP1DS10RT0VRSBD62Q0MQB/mibr-vs-lynn-vision-m1-anubis-p2.dem?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=minioadmin%2F20260605%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260605T012324Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=4d6cb3e6f1715ba9b1301b9d88074ef09bee288ba9f93e8ad30ac0413df9c305
+### Request Magic Link (Pedir link de login)
+POST {{baseUrl}}/auth/magic-link
+Content-Type: application/json
+
+{
+  "email": "test@example.com"
+}
+
+### Callback de Autenticação (Fazer login com token do magic link)
+POST {{baseUrl}}/auth/callback
+Content-Type: application/json
+
+{
+  "token": "{{magicToken}}"
+}
+
+### Refresh Session (Atualizar Token JWT e Sessão)
+POST {{baseUrl}}/auth/refresh
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "session_id": "{{sessionID}}"
+}
+
+### Logout (Finalizar Sessão)
+DELETE {{baseUrl}}/auth/session
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "session_id": "{{sessionID}}"
+}
+
+### Solicitar Upload de Demo (Upload Request)
+POST {{baseUrl}}/demos/upload-request
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "filename": "mibr-vs-lynn-vision-m1-anubis-p2.dem"
+}
+
+### Envie o binário da demo usando o método PUT para a URL retornada no passo anterior.
+PUT {{urlAssinadaRetornada}}
+Content-Type: application/octet-stream
+
+< /home/joaomigguel/Downloads/iem-cologne-major-2026-stage-1-mibr-vs-lynn-vision-bo3-LMq61QcmiEeELOsdR5hiwi/mibr-vs-lynn-vision-m1-anubis-p2.dem
+
+### Confirmar Ingestão do Upload (Upload Confirm)
+POST {{baseUrl}}/demos/upload-confirm
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "match_id": "01KTAP1DS10RT0VRSBD62Q0MQB",
+  "bucket_key": "/uploads/01KTAM9NZ3QF5V2N9H62R05JM7/01KTAP1DS10RT0VRSBD62Q0MQB/mibr-vs-lynn-vision-m1-anubis-p2.dem"
+}
+
+### Listar Sessões de Chat Ativas
+GET {{baseUrl}}/chat
+Authorization: Bearer {{authToken}}
+
+### Iniciar Nova Conversa de Chat
+POST {{baseUrl}}/chat
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "question": "Porque o insani tem tão pouco HS?",
+  "match_ids": ["01KTAP1DS10RT0VRSBD62Q0MQB"]
+}
+
+### Enviar Mensagem Adicional em Chat Existente
+@chatSessionID = 01KTAP883DM1CCCB0V7E06V7CK
+POST {{baseUrl}}/chat/{{chatSessionID}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "question": "Quem se destacou mais no lado TR?"
+}
+
+### Obter Detalhes/Histórico de uma Sessão de Chat
+GET {{baseUrl}}/chat/{{chatSessionID}}
+Authorization: Bearer {{authToken}}
+
+### Excluir uma Sessão de Chat
+DELETE {{baseUrl}}/chat/{{chatSessionID}}
+Authorization: Bearer {{authToken}}
