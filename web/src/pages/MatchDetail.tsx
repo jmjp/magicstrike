@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, AlertTriangle, MessageSquare } from "lucide-react";
 import { getMatch } from "@/api/matches";
-import type { Match } from "@/api/types";
+
 import {
   Card,
   StatusDot,
@@ -16,28 +16,18 @@ import { formatDateTime, formatScore } from "@/lib/format";
 export function MatchDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [match, setMatch] = useState<Match | null>(null);
-  const [status, setStatus] = useState<
-    "loading" | "data" | "empty" | "error"
-  >("loading");
+  const { data: match, isLoading, error } = useQuery({
+    queryKey: ['match', id],
+    queryFn: () => getMatch(id!),
+    enabled: !!id,
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 404) return false;
+      return failureCount < 1;
+    }
+  });
 
-  useEffect(() => {
-    if (!id) return;
+  const status = isLoading ? "loading" : error ? (error as any)?.response?.status === 404 ? "empty" : "error" : !match ? "empty" : "data";
 
-    setStatus("loading");
-    getMatch(id)
-      .then((data) => {
-        setMatch(data);
-        setStatus("data");
-      })
-      .catch((err) => {
-        if (err.response?.status === 404) {
-          setStatus("empty");
-        } else {
-          setStatus("error");
-        }
-      });
-  }, [id]);
 
   if (status === "loading") {
     return (

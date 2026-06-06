@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 import { listChats, createChat, deleteChat } from "@/api/chat";
 import { listMatches } from "@/api/matches";
-import type { ChatSessionSummary, Match } from "@/api/types";
+import type { Match } from "@/api/types";
 import {
   Button,
   Modal,
@@ -29,27 +30,17 @@ export function ChatList() {
   const preselectedMatchId = searchParams.get("match_id");
 
   /* ─── Chat List ─── */
-  const [chats, setChats] = useState<ChatSessionSummary[]>([]);
-  const [total, setTotal] = useState(0);
-  const [status, setStatus] = useState<
-    "loading" | "data" | "empty" | "error"
-  >("loading");
+  const queryClient = useQueryClient();
 
-  const fetchChats = useCallback(async () => {
-    setStatus("loading");
-    try {
-      const result = await listChats(20, 0);
-      setChats(result.sessions);
-      setTotal(result.total);
-      setStatus(result.sessions.length === 0 ? "empty" : "data");
-    } catch {
-      setStatus("error");
-    }
-  }, []);
+  const { data: chatData, isLoading: chatsLoading, isError: chatsIsError, refetch: fetchChats } = useQuery({
+    queryKey: ['chats'],
+    queryFn: () => listChats(20, 0),
+  });
 
-  useEffect(() => {
-    fetchChats();
-  }, [fetchChats]);
+  const chats = chatData?.sessions ?? [];
+  const total = chatData?.total ?? 0;
+  const status = chatsLoading ? "loading" : chatsIsError ? "error" : chats.length === 0 ? "empty" : "data";
+
 
   /* ─── New Chat Modal ─── */
   const [modalOpen, setModalOpen] = useState(!!preselectedMatchId);
@@ -137,12 +128,22 @@ export function ChatList() {
 
   const handleDeleteChat = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+
+    const previousChats = queryClient.getQueryData(['chats']);
+
+    queryClient.setQueryData(['chats'], (old: any) => {
+      if (!old) return old;
+      return {
+        ...old,
+        sessions: old.sessions.filter((c: any) => c.id !== id),
+        total: old.total - 1
+      };
+    });
+
     try {
       await deleteChat(id);
-      setChats((prev) => prev.filter((c) => c.id !== id));
-      setTotal((prev) => prev - 1);
     } catch {
-      // ignore
+      queryClient.setQueryData(['chats'], previousChats);
     }
   };
 
@@ -357,7 +358,7 @@ export function ChatList() {
           <p className="mt-1 text-sm text-text-secondary">
             There was a problem connecting to the server.
           </p>
-          <Button variant="secondary" className="mt-6" onClick={fetchChats}>
+          <Button variant="secondary" className="mt-6" onClick={() => fetchChats()}>
             Retry
           </Button>
         </div>
