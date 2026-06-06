@@ -83,17 +83,24 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  // Restore session from localStorage on mount
+  // Restore session from storage on mount
   useEffect(() => {
-    const token = storage.getToken();
-    const user = storage.getUser();
-    const sessionId = storage.getSession();
+    const checkAuth = () => {
+      const token = storage.getToken();
+      const user = storage.getUser();
+      const sessionId = storage.getSession();
 
-    if (token && user && sessionId) {
-      dispatch({ type: "RESTORE", user, token, sessionId });
-    } else {
-      dispatch({ type: "LOADED" });
-    }
+      if (token && user && sessionId) {
+        dispatch({ type: "RESTORE", user, token, sessionId });
+      } else {
+        dispatch({ type: "LOADED" });
+      }
+    };
+
+    checkAuth();
+
+    window.addEventListener('auth-changed', checkAuth);
+    return () => window.removeEventListener('auth-changed', checkAuth);
   }, []);
 
   const requestMagicLink = useCallback(async (email: string) => {

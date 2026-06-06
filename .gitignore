@@ -62,3 +62,4 @@ Thumbs.db
 .agents/
 .claude/
 .gemini/
+*.tsbuildinfo

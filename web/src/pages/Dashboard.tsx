@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Plus, AlertTriangle, RefreshCw } from "lucide-react";
 import { listMatches } from "@/api/matches";
@@ -10,29 +11,17 @@ const PAGE_SIZE = 20;
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [status, setStatus] = useState<"loading" | "data" | "empty" | "error">(
-    "loading",
-  );
 
-  const fetchMatches = useCallback(async (newOffset = 0) => {
-    setStatus("loading");
-    try {
-      const result = await listMatches(PAGE_SIZE, newOffset);
-      setMatches(result.matches);
-      setTotal(result.count);
-      setOffset(newOffset);
-      setStatus(result.matches.length === 0 ? "empty" : "data");
-    } catch {
-      setStatus("error");
-    }
-  }, []);
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['matches', offset],
+    queryFn: () => listMatches(PAGE_SIZE, offset),
+  });
 
-  useEffect(() => {
-    fetchMatches(0);
-  }, [fetchMatches]);
+  const matches = data?.matches ?? [];
+  const total = data?.count ?? 0;
+  const status = isLoading ? "loading" : isError ? "error" : matches.length === 0 ? "empty" : "data";
+
 
   const mapStatusVariant = (
     status: Match["status"],
@@ -108,7 +97,7 @@ export function Dashboard() {
             variant="secondary"
             icon={<RefreshCw size={16} />}
             className="mt-6"
-            onClick={() => fetchMatches(offset)}
+            onClick={() => refetch()}
           >
             Retry
           </Button>
@@ -187,7 +176,7 @@ export function Dashboard() {
             variant="secondary"
             size="sm"
             disabled={offset === 0}
-            onClick={() => fetchMatches(Math.max(0, offset - PAGE_SIZE))}
+            onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
           >
             Previous
           </Button>
@@ -198,7 +187,7 @@ export function Dashboard() {
             variant="secondary"
             size="sm"
             disabled={offset + PAGE_SIZE >= total}
-            onClick={() => fetchMatches(offset + PAGE_SIZE)}
+            onClick={() => setOffset(offset + PAGE_SIZE)}
           >
             Next
           </Button>

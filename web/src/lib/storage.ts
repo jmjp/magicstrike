@@ -17,15 +17,15 @@ export interface StoredUser {
 
 export const storage = {
   getToken(): string | null {
-    return localStorage.getItem(KEYS.TOKEN);
+    return sessionStorage.getItem(KEYS.TOKEN);
   },
 
   setToken(token: string): void {
-    localStorage.setItem(KEYS.TOKEN, token);
+    sessionStorage.setItem(KEYS.TOKEN, token);
   },
 
   getUser(): StoredUser | null {
-    const raw = localStorage.getItem(KEYS.USER);
+    const raw = sessionStorage.getItem(KEYS.USER);
     if (!raw) return null;
     try {
       return JSON.parse(raw) as StoredUser;
@@ -35,26 +35,28 @@ export const storage = {
   },
 
   setUser(user: StoredUser): void {
-    localStorage.setItem(KEYS.USER, JSON.stringify(user));
+    sessionStorage.setItem(KEYS.USER, JSON.stringify(user));
   },
 
   getSession(): string | null {
-    return localStorage.getItem(KEYS.SESSION);
+    return sessionStorage.getItem(KEYS.SESSION);
   },
 
   setSession(sessionId: string): void {
-    localStorage.setItem(KEYS.SESSION, sessionId);
+    sessionStorage.setItem(KEYS.SESSION, sessionId);
   },
 
   setAuth(token: string, sessionId: string, user: StoredUser): void {
     this.setToken(token);
     this.setSession(sessionId);
     this.setUser(user);
+      window.dispatchEvent(new Event('auth-changed'));
   },
 
   clear(): void {
-    localStorage.removeItem(KEYS.TOKEN);
-    localStorage.removeItem(KEYS.USER);
-    localStorage.removeItem(KEYS.SESSION);
+    sessionStorage.removeItem(KEYS.TOKEN);
+    sessionStorage.removeItem(KEYS.USER);
+    sessionStorage.removeItem(KEYS.SESSION);
+      window.dispatchEvent(new Event('auth-changed'));
   },
 };
